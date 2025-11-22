@@ -6,7 +6,7 @@ docker image to run Samba or AFP (netatalk) to provide a compatible Time Machine
 
 ### Multi-arch Tags
 
-The following tags have multi-arch support for `amd64`, `armv7l`, and `arm64` and will automatically pull the correct tag based on your system's architecture:
+The following tags have multi-arch support for `amd64` and `arm64` and will automatically pull the correct tag based on your system's architecture:
 
 `latest`, `smb`
 
@@ -27,6 +27,8 @@ These tags will explicitly pull the image for the listed architecture and are bi
     * Deprecated but still available; not being regularly built - **This image may have unpatched security vulnerabilities**
 
 #### [`armv7l`](https://hub.docker.com/repository/docker/mbentley/timemachine/tags?page=1&ordering=last_updated&name=armv7l)
+
+**Note**: new armv7l images are no longer being built as I have deprecated that architecture.
 
 * `latest-smb-armv7l`, `smb-armv7l` - SMB image based off of alpine:latest for the `armv7l` architecture
 
