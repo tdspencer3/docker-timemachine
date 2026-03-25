@@ -306,6 +306,30 @@ then
 
     # EXTERNAL_CONF not set; assume we are creating one user; create user
     create_smb_user
+
+    # Process extra non-Time Machine shares from environment variables
+    i=1
+    while true; do
+      eval EXTRA_NAME="\$EXTRA_SHARE_${i}_NAME"
+      eval EXTRA_PATH="\$EXTRA_SHARE_${i}_PATH"
+      [ -z "${EXTRA_NAME}" ] && break
+
+      if [ -z "${EXTRA_PATH}" ]; then
+        echo "ERROR: EXTRA_SHARE_${i}_NAME is set but EXTRA_SHARE_${i}_PATH is not; skipping"
+        i=$((i + 1))
+        continue
+      fi
+
+      echo "INFO: Adding extra share [${EXTRA_NAME}] at ${EXTRA_PATH}"
+      echo "
+[${EXTRA_NAME}]
+   path = ${EXTRA_PATH}
+   read only = no
+   valid users = ${TM_USERNAME}
+   vfs objects = ${SMB_VFS_OBJECTS}" >> /etc/samba/smb.conf
+
+      i=$((i + 1))
+    done
   else
     # EXTERNAL_CONF is set; assume we are creating multiple users
     if [ ! -d "${EXTERNAL_CONF}" ]
