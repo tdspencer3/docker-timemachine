@@ -16,6 +16,8 @@ VOLUME_SIZE_LIMIT="${VOLUME_SIZE_LIMIT:-0}"
 WORKGROUP="${WORKGROUP:-WORKGROUP}"
 EXTERNAL_CONF="${EXTERNAL_CONF:-}"
 HIDE_SHARES="${HIDE_SHARES:-no}"
+TM_ENABLED="${TM_ENABLED:-yes}"
+SHARE_PATH="${SHARE_PATH:-/opt/${TM_USERNAME}}"
 SMB_VFS_OBJECTS="${SMB_VFS_OBJECTS:-fruit streams_xattr}"
 SMB_INHERIT_PERMISSIONS="${SMB_INHERIT_PERMISSIONS:-no}"
 SMB_NFS_ACES="${SMB_NFS_ACES:-no}"
@@ -75,9 +77,9 @@ samba_user_setup() {
 
 create_user_directory() {
   # create user directory if needed
-  if [ ! -d "/opt/${TM_USERNAME}" ]
+  if [ ! -d "${SHARE_PATH}" ]
   then
-    mkdir "/opt/${TM_USERNAME}"
+    mkdir "${SHARE_PATH}"
   fi
 }
 
@@ -156,13 +158,15 @@ create_smb_user() {
     echo "INFO: CUSTOM_SMB_CONF=false; generating [${SHARE_NAME}] section of /etc/samba/smb.conf..."
     echo "
 [${SHARE_NAME}]
-   path = /opt/${TM_USERNAME}
+   path = ${SHARE_PATH}
    inherit permissions = ${SMB_INHERIT_PERMISSIONS}
    read only = no
    valid users = ${TM_USERNAME}
-   vfs objects = ${SMB_VFS_OBJECTS}
-   fruit:time machine = yes
+   vfs objects = ${SMB_VFS_OBJECTS}" >> /etc/samba/smb.conf
+    if [ "${TM_ENABLED}" = "yes" ]; then
+      echo "   fruit:time machine = yes
    fruit:time machine max size = ${VOLUME_SIZE_LIMIT}" >> /etc/samba/smb.conf
+    fi
   else
     # CUSTOM_SMB_CONF was specified; make sure the file exists
     if [ -f "/etc/samba/smb.conf" ]
@@ -188,13 +192,13 @@ set_permissions() {
   then
     # set the ownership of the directory time machine will use
     printf "INFO: "
-    chown -v "${TM_USERNAME}":"${TM_GROUPNAME}" "/opt/${TM_USERNAME}"
+    chown -v "${TM_USERNAME}":"${TM_GROUPNAME}" "${SHARE_PATH}"
 
     # change the permissions of the directory time machine will use
     printf "INFO: "
-    chmod -v 770 "/opt/${TM_USERNAME}"
+    chmod -v 770 "${SHARE_PATH}"
   else
-    echo "INFO: SET_PERMISSIONS=false; not setting ownership and permissions for /opt/${TM_USERNAME}"
+    echo "INFO: SET_PERMISSIONS=false; not setting ownership and permissions for ${SHARE_PATH}"
   fi
 }
 
@@ -320,8 +324,14 @@ then
       # shellcheck disable=SC1090
       . "${USER_FILE}"
 
-      # write the individual share info for avahi discovery
-      write_avahi_adisk_service "${DK_NUMBER}" "${SHARE_NAME}"
+      # set defaults for variables that may not be in the conf file
+      TM_ENABLED="${TM_ENABLED:-yes}"
+      SHARE_PATH="${SHARE_PATH:-/opt/${TM_USERNAME}}"
+
+      # write the individual share info for avahi discovery (only for TM-enabled shares)
+      if [ "${TM_ENABLED}" = "yes" ]; then
+        write_avahi_adisk_service "${DK_NUMBER}" "${SHARE_NAME}"
+      fi
 
       # check to see if we are using a password file
       if [ -n "${PASSWORD_FILE}" ]
@@ -334,7 +344,7 @@ then
       create_smb_user
 
       # make sure we clear any previously set variables after a loop
-      unset TM_USERNAME TM_GROUPNAME PASSWORD SHARE_NAME VOLUME_SIZE_LIMIT TM_UID TM_GID
+      unset TM_USERNAME TM_GROUPNAME PASSWORD SHARE_NAME VOLUME_SIZE_LIMIT TM_UID TM_GID TM_ENABLED SHARE_PATH
 
       # increment DK_NUMBER
       DK_NUMBER=$((DK_NUMBER+1))

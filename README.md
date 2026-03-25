@@ -211,6 +211,8 @@ If you change the `TM_USERNAME` value, it will change the persistent data path f
 | `PASSWORD` | `timemachine` | sets the password for the `timemachine` user |
 | `SET_PERMISSIONS` | `false` | set to `true` to have the entrypoint set ownership and permission on the `/opt/<username>` in the container |
 | `SHARE_NAME` | `TimeMachine` | sets the name of the timemachine share to TimeMachine by default |
+| `SHARE_PATH` | `/opt/<TM_USERNAME>` | sets the path for the share data directory; useful when using `EXTERNAL_CONF` to place share data in a custom location |
+| `TM_ENABLED` | `yes` | set to `no` to disable Time Machine for this share (removes `fruit:time machine` and Avahi `_adisk._tcp` advertisement); useful with `EXTERNAL_CONF` to mix Time Machine and regular file shares |
 | `SMB_INHERIT_PERMISSIONS` | `no` | if yes, permissions for new files will be forced to match the parent folder |
 | `SMB_NFS_ACES` | `no` | value of `fruit:nfs_aces`; support for querying and modifying the UNIX mode of directory entries via NFS ACEs |
 | `SMB_METADATA` | `stream` | value of `fruit:metadata`; controls where the OS X metadata stream is stored |
@@ -238,6 +240,22 @@ SHARE_NAME=foo
 VOLUME_SIZE_LIMIT="1 T"
 TM_UID=1000
 TM_GID=1000
+```
+
+You can also optionally set `SHARE_PATH` and `TM_ENABLED` per share. For example, to create a regular (non-Time Machine) file share:
+
+`files.conf`
+
+```
+TM_USERNAME=foo
+TM_GROUPNAME=foogroup
+PASSWORD=foopass
+SHARE_NAME=Files
+VOLUME_SIZE_LIMIT=
+TM_UID=1000
+TM_GID=1000
+TM_ENABLED=no
+SHARE_PATH=/opt/files
 ```
 
 #### Example run command for `EXTERNAL_CONF`
