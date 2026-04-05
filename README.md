@@ -218,17 +218,17 @@ If you change the `TM_USERNAME` value, it will change the persistent data path f
 | `SMB_METADATA` | `stream` | value of `fruit:metadata`; controls where the OS X metadata stream is stored |
 | `SMB_PORT` | `445` | sets the port that Samba will be available on |
 | `SMB_VFS_OBJECTS` | `fruit streams_xattr` | value of `vfs objects` |
-| `VOLUME_SIZE_LIMIT` | `0` | sets the maximum size of the time machine backup; a unit can also be passed (e.g. - `1 T`). See the [Samba docs](https://www.samba.org/samba/docs/current/man-html/vfs_fruit.8.html) under the `fruit:time machine max size` section for more details |
+| `VOLUME_SIZE_LIMIT` | `0` | sets the maximum size of the time machine backup in MiB; a unit can also be passed (e.g. - `1 T`). See the [Samba docs](https://www.samba.org/samba/docs/current/man-html/vfs_fruit.8.html) under the `fruit:time machine max size` section for more details |
 | `WORKGROUP` | `WORKGROUP` | set the Samba workgroup name |
 | `IGNORE_DOS_ATTRIBUTES` | `false` | If set to `true` Samba will ignore DOS attributes. This is accomplished by setting [store dos attributes](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#STOREDOSATTRIBUTES), [map hidden](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPHIDDEN), [map system](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPSYSTEM), [map archive](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPARCHIVE) and [map readonly](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPREADONLY) to `no` in the `[global]` section. |
-| `EXTRA_SHARE_<N>_NAME` | _not set_ | Name of an additional non-Time Machine share (N starts at 1); only used in single-user mode (not with `EXTERNAL_CONF`) |
-| `EXTRA_SHARE_<N>_PATH` | _not set_ | Path for the additional share identified by `EXTRA_SHARE_<N>_NAME` |
+| `EXTRA_SHARES` | _not set_ | Comma-separated list of additional non-Time Machine shares in `name:/path` format (e.g. `Files:/opt/files,Docs:/opt/docs`); only used in single-user mode (not with `EXTERNAL_CONF`) |
 
 ### Adding Extra Non-Time Machine Shares (without EXTERNAL_CONF)
 
-If you want to expose one or more regular file shares alongside your Time Machine share, you can use the `EXTRA_SHARE_<N>_NAME` and `EXTRA_SHARE_<N>_PATH` environment variables instead of setting up `EXTERNAL_CONF` files. This is especially useful for container orchestrators (Portainer, Runtipi, etc.) where shipping config files alongside the container is awkward.
+If you want to expose one or more regular file shares alongside your Time Machine share, you can use the `EXTRA_SHARES` environment variable instead of setting up `EXTERNAL_CONF` files. This is especially useful for container orchestrators (Portainer, Runtipi, etc.) where shipping config files alongside the container is awkward.
 
-The numbering starts at 1 and must be sequential (the loop stops at the first missing `_NAME`).
+> [!NOTE]
+> Each extra share is accessible only to the user defined by `TM_USERNAME`. There is no way to set a different `valid users` per extra share in this mode — use `EXTERNAL_CONF` if you need per-share user control.
 
 #### Example docker-compose with an extra share
 
@@ -242,8 +242,7 @@ services:
       - PASSWORD=timemachine
       - SHARE_NAME=TimeMachine
       - VOLUME_SIZE_LIMIT=512000
-      - EXTRA_SHARE_1_NAME=Files
-      - EXTRA_SHARE_1_PATH=/opt/files
+      - EXTRA_SHARES=Files:/opt/files
     volumes:
       - /path/to/timemachine:/opt/timemachine
       - /path/to/files:/opt/files
@@ -255,6 +254,8 @@ services:
         soft: 65536
         hard: 65536
 ```
+
+Multiple extra shares can be added as a comma-separated list: `EXTRA_SHARES=Files:/opt/files,Docs:/opt/docs`
 
 ### Adding Multiple Users & Shares
 
