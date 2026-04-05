@@ -140,7 +140,7 @@ create_smb_user() {
     else
       echo "INFO: User ${TM_USERNAME} doesn't exist; creating..."
       # create the user
-      adduser -u "${TM_UID}" -G "${TM_GROUPNAME}" -h "/opt/${TM_USERNAME}" -s /bin/false -D "${TM_USERNAME}"
+      adduser -u "${TM_UID}" -G "${TM_GROUPNAME}" -h "${SHARE_PATH}" -s /bin/false -D "${TM_USERNAME}"
 
       # set the user's password if necessary
       set_password
@@ -205,8 +205,9 @@ set_permissions() {
 write_avahi_adisk_service() {
   # $1 = DK_NUMBER, $2 = SHARE_NAME
   echo "INFO: Avahi - adding the 'dk${1}', '${2}' share txt-record to /etc/avahi/services/smbd.service..."
-  # write the '_adisk._tcp' service definition
-  echo "    <txt-record>dk${1}=adVN=${2},adVF=0x82</txt-record>" >> /etc/avahi/services/smbd.service
+  # buffer the '_adisk._tcp' txt-record entry; written conditionally after all shares are processed
+  AVAHI_DK_ENTRIES="${AVAHI_DK_ENTRIES}    <txt-record>dk${1}=adVN=${2},adVF=0x82</txt-record>
+"
 }
 
 
@@ -290,18 +291,18 @@ then
     <port>9</port>
     ${HOSTNAME_XML}
     <txt-record>model=${MIMIC_MODEL}</txt-record>
-  </service>
-  <service>
-    <type>_adisk._tcp</type>
-    <port>9</port>
-    ${HOSTNAME_XML}
-    <txt-record>sys=adVF=0x100</txt-record>" > /etc/avahi/services/smbd.service
+  </service>" > /etc/avahi/services/smbd.service
+
+  # initialize avahi dk entries buffer
+  AVAHI_DK_ENTRIES=""
 
   # check to see if we should create one or many users
   if [ -z "${EXTERNAL_CONF}" ]
   then
-    # write the individual share info for avahi discovery
-    write_avahi_adisk_service 0 "${SHARE_NAME}"
+    # write the individual share info for avahi discovery (only for TM-enabled shares)
+    if [ "${TM_ENABLED}" = "yes" ]; then
+      write_avahi_adisk_service 0 "${SHARE_NAME}"
+    fi
 
     # EXTERNAL_CONF not set; assume we are creating one user; create user
     create_smb_user
@@ -331,6 +332,8 @@ then
       # write the individual share info for avahi discovery (only for TM-enabled shares)
       if [ "${TM_ENABLED}" = "yes" ]; then
         write_avahi_adisk_service "${DK_NUMBER}" "${SHARE_NAME}"
+        # increment DK_NUMBER only when an avahi entry was actually written
+        DK_NUMBER=$((DK_NUMBER+1))
       fi
 
       # check to see if we are using a password file
@@ -345,16 +348,18 @@ then
 
       # make sure we clear any previously set variables after a loop
       unset TM_USERNAME TM_GROUPNAME PASSWORD SHARE_NAME VOLUME_SIZE_LIMIT TM_UID TM_GID TM_ENABLED SHARE_PATH
-
-      # increment DK_NUMBER
-      DK_NUMBER=$((DK_NUMBER+1))
     done
   fi
 
   # finish writing the avahi discovery file
   echo "INFO: Avahi - completing the configuration in /etc/avahi/services/smbd.service..."
-  echo "  </service>
-</service-group>" >> /etc/avahi/services/smbd.service
+  # only write the _adisk._tcp service if at least one TM share was configured;
+  # an empty _adisk._tcp block would cause macOS to show a phantom entry in the Time Machine picker
+  if [ -n "${AVAHI_DK_ENTRIES}" ]
+  then
+    printf '  <service>\n    <type>_adisk._tcp</type>\n    <port>9</port>\n    %s\n    <txt-record>sys=adVF=0x100</txt-record>\n%s  </service>\n' "${HOSTNAME_XML}" "${AVAHI_DK_ENTRIES}" >> /etc/avahi/services/smbd.service
+  fi
+  echo "</service-group>" >> /etc/avahi/services/smbd.service
 
   # cleanup PID files
   for PIDFILE in nmbd samba-bgqd smbd
