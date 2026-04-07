@@ -317,6 +317,10 @@ then
     # initialize the DK_NUMBER variable at 0
     DK_NUMBER=0
 
+    # unset SHARE_PATH so the per-user default (/opt/${TM_USERNAME}) is evaluated correctly
+    # for the first .conf file (the global default of /opt/timemachine would otherwise persist)
+    unset SHARE_PATH
+
     # loop through each user file in the EXTERNAL_CONF directory to load the variables
     for USER_FILE in "${EXTERNAL_CONF}"/*.conf
     do
