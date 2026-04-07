@@ -16,6 +16,8 @@ VOLUME_SIZE_LIMIT="${VOLUME_SIZE_LIMIT:-0}"
 WORKGROUP="${WORKGROUP:-WORKGROUP}"
 EXTERNAL_CONF="${EXTERNAL_CONF:-}"
 HIDE_SHARES="${HIDE_SHARES:-no}"
+TM_ENABLED="${TM_ENABLED:-yes}"
+SHARE_PATH="${SHARE_PATH:-/opt/${TM_USERNAME}}"
 SMB_VFS_OBJECTS="${SMB_VFS_OBJECTS:-fruit streams_xattr}"
 SMB_INHERIT_PERMISSIONS="${SMB_INHERIT_PERMISSIONS:-no}"
 SMB_NFS_ACES="${SMB_NFS_ACES:-no}"
@@ -75,9 +77,9 @@ samba_user_setup() {
 
 create_user_directory() {
   # create user directory if needed
-  if [ ! -d "/opt/${TM_USERNAME}" ]
+  if [ ! -d "${SHARE_PATH}" ]
   then
-    mkdir "/opt/${TM_USERNAME}"
+    mkdir "${SHARE_PATH}"
   fi
 }
 
@@ -138,7 +140,7 @@ create_smb_user() {
     else
       echo "INFO: User ${TM_USERNAME} doesn't exist; creating..."
       # create the user
-      adduser -u "${TM_UID}" -G "${TM_GROUPNAME}" -h "/opt/${TM_USERNAME}" -s /bin/false -D "${TM_USERNAME}"
+      adduser -u "${TM_UID}" -G "${TM_GROUPNAME}" -h "${SHARE_PATH}" -s /bin/false -D "${TM_USERNAME}"
 
       # set the user's password if necessary
       set_password
@@ -156,13 +158,15 @@ create_smb_user() {
     echo "INFO: CUSTOM_SMB_CONF=false; generating [${SHARE_NAME}] section of /etc/samba/smb.conf..."
     echo "
 [${SHARE_NAME}]
-   path = /opt/${TM_USERNAME}
+   path = ${SHARE_PATH}
    inherit permissions = ${SMB_INHERIT_PERMISSIONS}
    read only = no
    valid users = ${TM_USERNAME}
-   vfs objects = ${SMB_VFS_OBJECTS}
-   fruit:time machine = yes
+   vfs objects = ${SMB_VFS_OBJECTS}" >> /etc/samba/smb.conf
+    if [ "${TM_ENABLED}" = "yes" ]; then
+      echo "   fruit:time machine = yes
    fruit:time machine max size = ${VOLUME_SIZE_LIMIT}" >> /etc/samba/smb.conf
+    fi
   else
     # CUSTOM_SMB_CONF was specified; make sure the file exists
     if [ -f "/etc/samba/smb.conf" ]
@@ -188,21 +192,22 @@ set_permissions() {
   then
     # set the ownership of the directory time machine will use
     printf "INFO: "
-    chown -v "${TM_USERNAME}":"${TM_GROUPNAME}" "/opt/${TM_USERNAME}"
+    chown -v "${TM_USERNAME}":"${TM_GROUPNAME}" "${SHARE_PATH}"
 
     # change the permissions of the directory time machine will use
     printf "INFO: "
-    chmod -v 770 "/opt/${TM_USERNAME}"
+    chmod -v 770 "${SHARE_PATH}"
   else
-    echo "INFO: SET_PERMISSIONS=false; not setting ownership and permissions for /opt/${TM_USERNAME}"
+    echo "INFO: SET_PERMISSIONS=false; not setting ownership and permissions for ${SHARE_PATH}"
   fi
 }
 
 write_avahi_adisk_service() {
   # $1 = DK_NUMBER, $2 = SHARE_NAME
   echo "INFO: Avahi - adding the 'dk${1}', '${2}' share txt-record to /etc/avahi/services/smbd.service..."
-  # write the '_adisk._tcp' service definition
-  echo "    <txt-record>dk${1}=adVN=${2},adVF=0x82</txt-record>" >> /etc/avahi/services/smbd.service
+  # buffer the '_adisk._tcp' txt-record entry; written conditionally after all shares are processed
+  AVAHI_DK_ENTRIES="${AVAHI_DK_ENTRIES}    <txt-record>dk${1}=adVN=${2},adVF=0x82</txt-record>
+"
 }
 
 
@@ -286,18 +291,18 @@ then
     <port>9</port>
     ${HOSTNAME_XML}
     <txt-record>model=${MIMIC_MODEL}</txt-record>
-  </service>
-  <service>
-    <type>_adisk._tcp</type>
-    <port>9</port>
-    ${HOSTNAME_XML}
-    <txt-record>sys=adVF=0x100</txt-record>" > /etc/avahi/services/smbd.service
+  </service>" > /etc/avahi/services/smbd.service
+
+  # initialize avahi dk entries buffer
+  AVAHI_DK_ENTRIES=""
 
   # check to see if we should create one or many users
   if [ -z "${EXTERNAL_CONF}" ]
   then
-    # write the individual share info for avahi discovery
-    write_avahi_adisk_service 0 "${SHARE_NAME}"
+    # write the individual share info for avahi discovery (only for TM-enabled shares)
+    if [ "${TM_ENABLED}" = "yes" ]; then
+      write_avahi_adisk_service 0 "${SHARE_NAME}"
+    fi
 
     # EXTERNAL_CONF not set; assume we are creating one user; create user
     create_smb_user
@@ -312,6 +317,10 @@ then
     # initialize the DK_NUMBER variable at 0
     DK_NUMBER=0
 
+    # unset SHARE_PATH so the per-user default (/opt/${TM_USERNAME}) is evaluated correctly
+    # for the first .conf file (the global default of /opt/timemachine would otherwise persist)
+    unset SHARE_PATH
+
     # loop through each user file in the EXTERNAL_CONF directory to load the variables
     for USER_FILE in "${EXTERNAL_CONF}"/*.conf
     do
@@ -320,8 +329,16 @@ then
       # shellcheck disable=SC1090
       . "${USER_FILE}"
 
-      # write the individual share info for avahi discovery
-      write_avahi_adisk_service "${DK_NUMBER}" "${SHARE_NAME}"
+      # set defaults for variables that may not be in the conf file
+      TM_ENABLED="${TM_ENABLED:-yes}"
+      SHARE_PATH="${SHARE_PATH:-/opt/${TM_USERNAME}}"
+
+      # write the individual share info for avahi discovery (only for TM-enabled shares)
+      if [ "${TM_ENABLED}" = "yes" ]; then
+        write_avahi_adisk_service "${DK_NUMBER}" "${SHARE_NAME}"
+        # increment DK_NUMBER only when an avahi entry was actually written
+        DK_NUMBER=$((DK_NUMBER+1))
+      fi
 
       # check to see if we are using a password file
       if [ -n "${PASSWORD_FILE}" ]
@@ -334,17 +351,19 @@ then
       create_smb_user
 
       # make sure we clear any previously set variables after a loop
-      unset TM_USERNAME TM_GROUPNAME PASSWORD SHARE_NAME VOLUME_SIZE_LIMIT TM_UID TM_GID
-
-      # increment DK_NUMBER
-      DK_NUMBER=$((DK_NUMBER+1))
+      unset TM_USERNAME TM_GROUPNAME PASSWORD SHARE_NAME VOLUME_SIZE_LIMIT TM_UID TM_GID TM_ENABLED SHARE_PATH
     done
   fi
 
   # finish writing the avahi discovery file
   echo "INFO: Avahi - completing the configuration in /etc/avahi/services/smbd.service..."
-  echo "  </service>
-</service-group>" >> /etc/avahi/services/smbd.service
+  # only write the _adisk._tcp service if at least one TM share was configured;
+  # an empty _adisk._tcp block would cause macOS to show a phantom entry in the Time Machine picker
+  if [ -n "${AVAHI_DK_ENTRIES}" ]
+  then
+    printf '  <service>\n    <type>_adisk._tcp</type>\n    <port>9</port>\n    %s\n    <txt-record>sys=adVF=0x100</txt-record>\n%s  </service>\n' "${HOSTNAME_XML}" "${AVAHI_DK_ENTRIES}" >> /etc/avahi/services/smbd.service
+  fi
+  echo "</service-group>" >> /etc/avahi/services/smbd.service
 
   # cleanup PID files
   for PIDFILE in nmbd samba-bgqd smbd
