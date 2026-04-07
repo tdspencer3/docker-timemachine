@@ -221,6 +221,41 @@ If you change the `TM_USERNAME` value, it will change the persistent data path f
 | `VOLUME_SIZE_LIMIT` | `0` | sets the maximum size of the time machine backup in MiB; a unit can also be passed (e.g. - `1 T`). See the [Samba docs](https://www.samba.org/samba/docs/current/man-html/vfs_fruit.8.html) under the `fruit:time machine max size` section for more details |
 | `WORKGROUP` | `WORKGROUP` | set the Samba workgroup name |
 | `IGNORE_DOS_ATTRIBUTES` | `false` | If set to `true` Samba will ignore DOS attributes. This is accomplished by setting [store dos attributes](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#STOREDOSATTRIBUTES), [map hidden](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPHIDDEN), [map system](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPSYSTEM), [map archive](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPARCHIVE) and [map readonly](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPREADONLY) to `no` in the `[global]` section. |
+| `EXTRA_SHARES` | _not set_ | Comma-separated list of additional non-Time Machine shares in `name:/path` format (e.g. `Files:/opt/files,Docs:/opt/docs`); only used in single-user mode (not with `EXTERNAL_CONF`) |
+
+### Adding Extra Non-Time Machine Shares (without EXTERNAL_CONF)
+
+If you want to expose one or more regular file shares alongside your Time Machine share, you can use the `EXTRA_SHARES` environment variable instead of setting up `EXTERNAL_CONF` files. This is especially useful for container orchestrators (Portainer, Runtipi, etc.) where shipping config files alongside the container is awkward.
+
+> [!NOTE]
+> Each extra share is accessible only to the user defined by `TM_USERNAME`. There is no way to set a different `valid users` per extra share in this mode — use `EXTERNAL_CONF` if you need per-share user control.
+
+#### Example docker-compose with an extra share
+
+```yaml
+services:
+  timemachine:
+    image: mbentley/timemachine:smb
+    network_mode: host
+    environment:
+      - TM_USERNAME=timemachine
+      - PASSWORD=timemachine
+      - SHARE_NAME=TimeMachine
+      - VOLUME_SIZE_LIMIT=512000
+      - EXTRA_SHARES=Files:/opt/files
+    volumes:
+      - /path/to/timemachine:/opt/timemachine
+      - /path/to/files:/opt/files
+    tmpfs:
+      - /run/samba
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+```
+
+Multiple extra shares can be added as a comma-separated list: `EXTRA_SHARES=Files:/opt/files,Docs:/opt/docs`
 
 ### Adding Multiple Users & Shares
 

@@ -306,6 +306,35 @@ then
 
     # EXTERNAL_CONF not set; assume we are creating one user; create user
     create_smb_user
+
+    # Process extra non-Time Machine shares from EXTRA_SHARES (comma-separated name:path pairs)
+    if [ "${CUSTOM_SMB_CONF}" != "true" ] && [ -n "${EXTRA_SHARES}" ]; then
+      OLD_IFS="${IFS}"
+      IFS=','
+      for entry in ${EXTRA_SHARES}; do
+        IFS="${OLD_IFS}"
+        EXTRA_NAME="${entry%%:*}"
+        EXTRA_PATH="${entry#*:}"
+
+        if [ -z "${EXTRA_NAME}" ] || [ -z "${EXTRA_PATH}" ] || [ "${EXTRA_NAME}" = "${EXTRA_PATH}" ]; then
+          echo "WARN: invalid EXTRA_SHARES entry '${entry}'; expected format 'name:/path'; skipping"
+          IFS=','
+          continue
+        fi
+
+        echo "INFO: Adding extra share [${EXTRA_NAME}] at ${EXTRA_PATH}"
+        echo "
+[${EXTRA_NAME}]
+   path = ${EXTRA_PATH}
+   inherit permissions = ${SMB_INHERIT_PERMISSIONS}
+   read only = no
+   valid users = ${TM_USERNAME}
+   vfs objects = ${SMB_VFS_OBJECTS}" >> /etc/samba/smb.conf
+
+        IFS=','
+      done
+      IFS="${OLD_IFS}"
+    fi
   else
     # EXTERNAL_CONF is set; assume we are creating multiple users
     if [ ! -d "${EXTERNAL_CONF}" ]
