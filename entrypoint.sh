@@ -308,7 +308,7 @@ then
     create_smb_user
 
     # Process extra non-Time Machine shares from EXTRA_SHARES (comma-separated name:path pairs)
-    if [ -n "${EXTRA_SHARES}" ]; then
+    if [ "${CUSTOM_SMB_CONF}" != "true" ] && [ -n "${EXTRA_SHARES}" ]; then
       OLD_IFS="${IFS}"
       IFS=','
       for entry in ${EXTRA_SHARES}; do
