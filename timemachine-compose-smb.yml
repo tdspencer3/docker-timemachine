@@ -1,7 +1,10 @@
-version: "3.7"
+name: timemachine
 services:
   timemachine:
-    network_mode: "host"
+    hostname: timemachine
+    networks:
+      timemachine:
+        ipv4_address: 10.1.1.10
     environment:
       - TM_USERNAME=timemachine
       - TM_GROUPNAME=timemachine
@@ -9,15 +12,12 @@ services:
       - TM_UID=1000
       - TM_GID=1000
       - SET_PERMISSIONS=false
+      - SHARE_NAME=TimeMachineWDMP
       - VOLUME_SIZE_LIMIT=0
+      - WORKGROUP=WORKGROUP-TM
     restart: unless-stopped
-    ports:
-      - "137:137/udp"
-      - "138:138/udp"
-      - "139:139"
-      - "445:445"
     volumes:
-      - /path/to/your/timemachine/volume:/opt/timemachine
+      - /mnt/time_machine:/opt/timemachine
     tmpfs:
       - /run/samba
     ulimits:
@@ -26,3 +26,13 @@ services:
         hard: 65536
     container_name: timemachine
     image: mbentley/timemachine:smb
+
+networks:
+  timemachine:
+    driver: ipvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      config:
+        - subnet: 10.1.0.0/21
+          gateway: 10.1.0.1
